@@ -18,6 +18,7 @@ library(readxl)
 library(dplyr)
 library(ggplot2)
 library(forcats)
+library(BioStatR)
 
 # Load the dataset (adjust the path as needed)
 bike_data <- london_merged ##read_excel(file_path) ## It's not working
@@ -38,7 +39,7 @@ bike_data <- bike_data %>%
   )
 ```
 
-# II. Description de donnes Metadata: "timestamp" - timestamp field for
+# II. Description de données Metadata
 
 ```         
 "cnt" - the count of a new bike shares 
@@ -72,6 +73,9 @@ colSums(is.na(bike_data)) # Check de la non presence de valeur na
 summary(bike_data)
 ```
 
+Peut-on créer un modèle à partir des variables données pour prédire
+l'emprunt de vélo(cnt)?
+
 # III. ANALYSE SUR R
 
 1.  Analyse d'une variable qualitative (weather_code).
@@ -87,12 +91,7 @@ weather_dist<-bike_data %>% group_by(weather_code) %>%
 
 weather_dist
 
-#Nombre total d'emprunt
-N<-(weather_dist%>%
-      mutate(N=sum(n))%>%
-      select(N)%>%
-      distinct()
-    )$N
+
 ```
 
 Verifions que l'on a pas d'emprunt de velo pendant une météo de type
@@ -102,10 +101,19 @@ Verifions que l'on a pas d'emprunt de velo pendant une météo de type
 bike_data %>% filter(weather_code == "Freezing Fog") 
 ```
 
-Représentation graphique à l'aide d'un diagramme en barre la
+Représentation graphique à l'aide d'un diagramme en barre de la
 distribution de la météo.
 
 ```{r}
+
+#Nombre total d'emprunt
+N<-(weather_dist%>%
+      mutate(N=sum(n))%>%
+      select(N)%>%
+      distinct()
+    )$N
+
+
 #resume graphique
 ggplot(weather_dist, aes(x = weather_code, y = n, fill = weather_code)) +
   geom_bar(stat = "identity") +
@@ -124,7 +132,7 @@ theme(axis.text.x = element_text(angle = 45, hjust = 1))+
 annotate(
     "text", 
     x = 2, y = 0.5,  # Position de l'annotation, ajustez selon votre graphique
-    label = paste("Sachant qu'il y a", N, "emprunts"), 
+    label = paste("Sachant qu'il y a", N, "observations."), 
     size = 4, color = "Black", hjust = 0
   )
 ```
@@ -161,7 +169,7 @@ ggplot(bike_data, aes(x = cnt)) +
 
 3.  Analyse d'un lien entre deux variables quantitatives (cnt et t1).
 
-Visualisation de la relation.
+Visualisation de la relation entre t1 et cnt.
 
 ```{r}
 # Scatter plot: t1 (température) vs. cnt (comptes de vélos)
@@ -176,7 +184,8 @@ ggplot(bike_data, aes(x = t1, y = cnt)) +
   theme_minimal()
 ```
 
-Calcul du coefficient de corrélation par le test de Pearson.
+Calcul du coefficient de corrélation entre t1 et cnt par le test de
+Pearson.
 
 ```{r}
 # Calcul du coefficient de corrélation
@@ -192,10 +201,10 @@ cor_test <- cor.test(bike_data$t1, bike_data$cnt)
 cor_test
 ```
 
-Le p est très faible donc t1 et cnt ne sont pas indépendante et elles
-ont un coefficient de corrélation positif et pas trop élevé. C'est
+Le p est très faible donc t1 et cnt ne sont pas indépendante.De plus,
+elles ont un coefficient de corrélation positif et pas trop élevé. C'est
 logique puisque l'on a pas de temperature extreme et plus il fait
-beau/chaud plus il y aura d'emprunt de vélib.
+beau/chaud plus il y a d'emprunt de vélib.
 
 4.  Analyse d'un lien entre deux variables qualitative (season et
     weather_code).
@@ -287,10 +296,10 @@ print(summary_by_weather)
 
 ```
 
-Visualisation de la relation entre les variables.
+Boxplots des distributions des emprunts (cnt) suivant la météo
+(weather_code).
 
 ```{r}
-# Boxplot de `cnt` par `weather_code`
 ggplot(bike_data, aes(x = weather_code, y = cnt, fill = weather_code)) +
   geom_boxplot() +
   labs(
@@ -302,16 +311,44 @@ ggplot(bike_data, aes(x = weather_code, y = cnt, fill = weather_code)) +
 
 ```
 
+Histogrammes représentant les distributions des emprunts (cnt) suivant
+la météo (weather_code).
+
+```{r}
+bike_data<-bike_data%>%
+  mutate(hour=hour(timestamp))
+
+bike_data<-bike_data%>%
+  group_by(weather_code,hour)%>%
+  mutate(n=sum(cnt))
+
+ggplot(bike_data, aes(x =cnt,fill=weather_code)) +
+  geom_histogram(binwidth = 2, alpha = 0.7) +
+  facet_wrap(~weather_code,nrow=8)+
+  labs(title = "Emprunts par heure et par saison", x = "hour", y = "nombre d'emprunts") +
+  theme_minimal()
+```
+
+Calculons le rapport de corrélation empirique entre cnt et weather_code.
+
+```{r}
+eta2(bike_data$cnt,bike_data$weather_code)
+```
+
+La corrélation est assez faible.
+
 ```{r}
 anova_result <- aov(cnt ~ factor(weather_code), data = bike_data)
 summary(anova_result)
 ```
 
-```{r}
-kruskal.test(cnt ~ factor(weather_code), data = bike_data)
-```
+La valeur de p nous dit que le weather_code influe sur le nombre
+d'emprunt mais le coeff de corrélation nous dit qu'il a une petite
+influence.
 
 6.  Ajustement d'un modèle linéaire, avec l'étape de validation.
+
+Construisons un modèle linéaire entre cnt et t1.
 
 ```{r}
 cat("-----------modele t1------------")
@@ -332,7 +369,6 @@ bike_data<-bike_data%>%
   mutate(hour=hour(timestamp))
 
 
-
 cat("-----------modele hour-----------")
 modele_lm <- lm(cnt ~ hour, data = bike_data)
 
@@ -341,7 +377,7 @@ summary(modele_lm)
 
 hour a donc une influence sur cnt. Cependant cette influence doit aussi
 dépendre des pics horaires lié à l'heure d'emprunt. Pour prendre en
-compte les pics horaire étudions un modèle créé par poly(hour,2)
+compte les pics horaire étudions un modèle créé avec poly(hour,2).
 
 ```{r}
 cat("-----------modele poly hour-----------")
@@ -353,18 +389,23 @@ summary(modele_lm)
 On voit tout de suite que ce modèle est plus précis que les précédents
 car R2 est égal à 0.31.
 
-Maintenant créons un modèle plus précis en utilisant toute les variable.
+Maintenant créons un modèle plus précis en utilisant t1 et poly(hour,2).
 
 ```{r}
 cat("-----------modele tt variable poly hour-----------")
-modele_lm <- lm(cnt ~ wind_speed+is_holiday+is_weekend+season+t1+hum+poly(hour,2)+weather_code, data = bike_data)
-
+modele_lm <- lm(cnt ~ t1+poly(hour,2), data = bike_data)
+#+is_holiday+is_weekend+weather_code+wind_speed+season+hum+
 summary(modele_lm)
 ```
 
 On voit que le meilleur modèle est le dernier. On a un R2 plus important
-(0.15 avec juste t1 eà 0.43 pour ce modèle), une amélioration sur les
-erreurs résiduels (999 à 813) et une étendues des résidus plus faible.
+(0.15 avec juste t1 à 0.38 pour ce modèle), une amélioration sur les
+erreurs résiduels (999 à 850) et une étendues des résidus plus faible.
+
+(si on ajoute les variables
+is_holiday+is_weekend+weather_code+wind_speed+season+hum R2 passe a 0.48
+mais les résultats qui vont suivre sont les même et la relation est plus
+simple)
 
 Voyons maintenant si ces résidus suivent une loi normale.
 
@@ -385,6 +426,21 @@ probable. En effet, les résidus fonction des valeurs ajustés forme un U
 et le QQ plot s'écarte trop de la droite
 
 ```{r}
+# Installer le package nortest si nécessaire
+if (!require(nortest)) install.packages("nortest")
+library(nortest)
+
+# Test d'Anderson-Darling
+ad_test <- ad.test(residuals(modele_lm))
+print(ad_test)
+```
+
+On voit avec les graphes que les résidus ne suivent pas une loi normale.
+C'est confirmer avec le test de Anderson-Darling.
+
+Etudions l'homoscédaticité du modèle.
+
+```{r}
 residu<-modele_lm$residuals
 valeur_ajuste<-modele_lm$fitted.values
 
@@ -399,35 +455,26 @@ labs(y="Racine carré des résidus ajusté",
 theme(legend.position="None")
 ```
 
-```{r}
-# Installer le package nortest si nécessaire
-if (!require(nortest)) install.packages("nortest")
-library(nortest)
+On voit un patern et une bande. Cela montre une hétéroscédaticité.
 
-# Test d'Anderson-Darling
-ad_test <- ad.test(residuals(modele_lm))
-print(ad_test)
-```
+Ce modèle a donc une hétéroscédaticité et une non normailté des résidus.
 
-On voit avec les graphes que les résidus ne suivent pas une loi normale.
-C'est confirmer avec le test de Anderson-Darling.
-
-Essayons avec le log de cnt
+Essayons avec le log de cnt. Cela permet d'amoindrir les valeurs
+extrèmes.
 
 ```{r}
 bike_data<-bike_data%>%
-  filter(cnt!=0)%>%
-  mutate(cnt_log=log(cnt))
+  mutate(cnt_log=log(cnt+1))
 
 
 cat("-----------modele tt variable poly hour et log de cnt-----------")
-modele_lm <- lm(cnt_log ~ wind_speed+is_holiday+is_weekend+season+t1+hum+poly(hour,2)+weather_code, data = bike_data)
-
+modele_lm <- lm(cnt_log ~ t1+poly(hour,2), data = bike_data)
+#wind_speed+is_holiday+is_weekend+season+hum+weather_code
 summary(modele_lm)
 ```
 
 On voit que ce modèle est encore plus précis que le précédent. Testons
-la normalité des résidus.
+la normalité des résidus et l'homscédaticité du modèle.
 
 ```{r}
 ggplot(modele_lm, aes(x=modele_lm$fitted.values,y=modele_lm$residuals)) +
@@ -451,3 +498,29 @@ library(nortest)
 ad_test <- ad.test(residuals(modele_lm))
 print(ad_test)
 ```
+
+```{r}
+residu<-modele_lm$residuals
+valeur_ajuste<-modele_lm$fitted.values
+
+ecart_type<-sqrt(sum(residu^2)/length(residu))
+
+residu_normalise<-residu/ecart_type
+
+ggplot(data=data.frame(residu_normalise,valeur_ajuste), aes(x=valeur_ajuste,y=sqrt(abs(residu_normalise)))) +
+geom_point(alpha=1) + 
+labs(y="Racine carré des résidus ajusté",
+     x="Valeur ajustée")+
+theme(legend.position="None")
+```
+
+On voit un patern et des bandes. Cela montre une hétéroscédaticité.
+
+Notre modèle ayant un R\^2=0.5833 capture une bonne part des variations
+de log(cnt). Cependant, nous observons une non-normalité des résidus, vu
+sur les graphes et à l'aide du test d'Anderson-Darling, et une
+hétéroscédaticité, vu sur le graphe.
+
+On peut en conclure que soit la relation entre log(cnt)/cnt et les
+prédicateurs n'est pas linéaire soit il y a une hétérogénéité des
+données.
