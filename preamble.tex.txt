@@ -1,0 +1,9 @@
+\usepackage{geometry}
+\geometry{margin=1in, parskip=full}  % Paramètres pour la mise en page
+\usepackage{fontspec}
+\setlength{\parskip}{1em}  % Ajoute de l'espace entre les paragraphes
+
+% Si vous voulez définir une taille de police globale
+\renewcommand{\familydefault}{\sfdefault}  % Utilisation d'une police sans empattement
+\usepackage{setspace}
+\onehalfspacing  % 1.5 interligne, ou ajustez comme vous voulez

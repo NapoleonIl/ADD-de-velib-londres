@@ -1,8 +1,15 @@
 ---
-title: "ADD"
-author: "S&T"
+title: "Projet1 analyse de donnée - Shuaibo Huang & Théophane Guiffant"
+author: "Shuaibo Huang & Théophane Guiffant"
 date: "2024-11-15"
-output: html_document
+output: 
+  pdf_document:
+    latex_engine: xelatex
+    highlight: tango  # Style de surlignage du code
+    toc: true       # Table des matières
+    toc_depth: 2    # Profondeur de la table des matières
+includes:
+  in_header: preamble.tex
 editor_options: 
   markdown: 
     wrap: 72
@@ -40,12 +47,21 @@ rm(available_packages)      # Ockham's razor
 
 old_theme <- theme_set(theme_minimal(base_family = "Helvetica Neue"))
 
+#permet de lire le fichier excel .xlsx
+if (!require("readxl")) install.packages("readxl")
+
+# Installer le package nortest si nécessaire
+if (!require(nortest)) install.packages("nortest")
+
+
 # Load necessary libraries
+library(nortest)
 library(readxl)
 library(dplyr)
 library(ggplot2)
 library(forcats)
 library(BioStatR)
+library(readxl)
 ```
 :::
 
@@ -53,8 +69,10 @@ library(BioStatR)
 
 ```{r}
 # Load the dataset
-bike_data <- london_merged 
+bike_data <- read_excel("london_merged.xlsx")
 ```
+
+\newpage
 
 2.  Transformation des données.
 
@@ -70,6 +88,9 @@ bike_data <- bike_data %>%
                                      "Snowfall", "Freezing Fog"))
   )
 ```
+
+
+
 
 # II. Description des données: Metadata
 
@@ -98,13 +119,10 @@ bike_data <- bike_data %>%
 94 = Freezing Fog
 (cela a été transformé dans le I)
 ```
-
+\newpage
 ```{r}
 # Inspect the data
-bike_data
-cat("--------------------Compte des na de chaque colonne--------------------------------\n")
 colSums(is.na(bike_data)) # Check de la non presence de valeur na
-cat("\n--------------------Résumé de bike_data--------------------------------\n")
 summary(bike_data)
 ```
 
@@ -115,9 +133,13 @@ variables donnée. Pour cela nous analyserons d'abord certaines variables
 et leur lien avant de répondre à la question: Peut-on créer un modèle à
 partir des variables données pour prédire l'emprunt de vélo(cnt)?
 
+\newpage
+
 # III. ANALYSE SUR R
+\
 
 1.  Analyse d'une variable qualitative (weather_code).
+\
 
 Déterminons tout d'abord la table statistique du code météo.
 
@@ -129,17 +151,15 @@ weather_dist<-bike_data %>% group_by(weather_code) %>%
   arrange(desc(Pourcentage))
 
 weather_dist
-
-
 ```
-
+\
 Nous observons l'absence de la ligne "Frezzing Fog", verifions qu'il ny
 a jamais eu ce code météo à Londre de 2015 à 2017.
 
 ```{r}
 bike_data %>% filter(weather_code == "Freezing Fog") 
 ```
-
+\
 Maintenant, pour mieux visualiser la distribution des codes météo,
 représentons graphiquement celle-ci à l'aide d'un diagramme en barre.
 
@@ -151,7 +171,9 @@ N<-(weather_dist%>%
       select(N)%>%
       distinct()
     )$N
-
+```
+\newpage
+```{r}
 
 #resume graphique
 ggplot(bike_data, aes(x=fct_infreq(weather_code), y=after_stat(prop), fill = weather_code)) +
@@ -161,6 +183,7 @@ ggplot(bike_data, aes(x=fct_infreq(weather_code), y=after_stat(prop), fill = wea
        x = "Weather Code", 
        y = "Frequency")+
   scale_y_continuous(labels=scales::percent)+
+  theme_minimal()+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
   annotate(
     "text", 
@@ -175,7 +198,10 @@ thunderstorm) voire complètement inexistant (freezing fog). Cela montre
 une distribution assez asymétrique pour les code météo extrème mais
 assez bien répartie pour les code météo plus modéré.
 
+\newpage
+
 2.  Analyse d'une variable quantitative (cnt).
+\
 
 Décrivons statistiquement en premier cnt.
 
@@ -185,7 +211,6 @@ summary(bike_data$cnt)
 mean_data <- mean(bike_data$cnt)
 var_data <- var(bike_data$cnt)
 ecart_data <- sd(bike_data$cnt)
-
 cat("Moyenne:", mean_data, "\nVariance:", var_data,"\nEcart-type:", ecart_data)
 ```
 
@@ -193,37 +218,41 @@ Ces résultats suggèrent une grande variabilité du nombre d'emprunts. En
 effet, la variance aussi élevée est le signe de periode avec peu
 d'emprunts (comme tôt le matin) et des periodes avec beaucoup d'emprunt
 (comme les heures de pointes).
-
+\
 Pour mieux visualiser cela, Représentons graphiquement la distribution
 empirique de cnt.
 
 ```{r}
 # Histogram of `cnt`
 ggplot(bike_data, aes(x = cnt)) +
-  geom_histogram(aes(y = ..density..),binwidth = 200, fill = "blue", color = "white", alpha = 0.7) +
+  geom_histogram(aes(y = after_stat(density)),binwidth = 200, fill = "blue", color = "white", alpha = 0.7) +
   labs(title = "Histogramme de la distribution empirique de cnt", x = "cnt (nombre d'emprunt)", y = "Frequency") +
   theme_minimal()
-
+```
+\newpage
+```{r}
 # Density plot of `cnt`
 ggplot(bike_data, aes(x = cnt)) +
   geom_density(fill = "green", alpha = 0.5) +
   labs(title = "Densité de la distribution empirique de cnt", x = "cnt", y = "Density") +
   theme_minimal()
-
-
-
+```
+\newpage
+```{r}
 ggplot(bike_data, aes(x = cnt)) +
-  geom_histogram(aes(y = ..density..),binwidth = 200, fill = "red", color = "white", alpha = 0.7) +
+  geom_histogram(aes(y = after_stat(density)),binwidth = 200, fill = "red", color = "white", alpha = 0.7) +
   geom_density(fill = "green", alpha = 0.5) +
-  labs(title = "Comparaisons entre l'histogramme et la densité", x = "cnt") +
+  labs(title = "Comparaison entre l'histogramme et la densité", x = "cnt") +
   theme_minimal()
 ```
 
 On voit une distribution asymétrique selon la moyenne avec une queue à
 droite indiquant quelque periodes avec un très grands nombre d'emprunts.
 C'est cohérent avec la forte variance trouvée précedement.
+\
 
 3.  Analyse d'un lien entre deux variables quantitatives (cnt et t1).
+\
 
 Commençons par visualiser la relation entre t1 et cnt.
 
@@ -254,7 +283,7 @@ cor_test <- cor.test(bike_data$t1, bike_data$cnt)
 ## Affichage du résultat
 cor_test
 ```
-
+\
 Le p est très faible donc t1 et cnt ne sont pas indépendante. De plus,
 elles ont un coefficient de corrélation positif et pas trop élevé. C'est
 logique puisque l'on a pas de temperature extreme et plus il fait
@@ -262,6 +291,7 @@ beau/chaud plus il y a d'emprunts de vélib.
 
 4.  Analyse d'un lien entre deux variables qualitative (season et
     weather_code).
+\
 
 Créeons la table de contigence des variables season et weather_code.
 
@@ -281,7 +311,7 @@ data2<-pivot_wider(data1,
             )
 data2
 ```
-
+\newpage
 Pour mieux visualiser ces résultats faisons un diagramme en barre
 illustrant la distribution du code météo sachant la saison.
 
@@ -302,11 +332,16 @@ ggplot(data1, aes(x = season, y=percent, fill = weather_code)) +
 On observe un lien entre les saisons et le code météo. En effet, en été
 et au printemps, il fait plus beau alors qu'en hivers et en automne il y
 a plus de nuages.
-
+\newpage
 Faisons un test du chi-2 pour tester l'indépendance des variables
 weather_code et saison.
 
 ```{r}
+data2[is.na(data2)] <- 0 #on remplace NA par 0
+
+contingence_table <- as.matrix(data2[, -1])  # Enlever la colonne 'season'
+rownames(contingence_table) <- data2$season
+
 # Test du Chi-2 sur la table de contingence
 chi2_test <- chisq.test(contingence_table)
 
@@ -314,9 +349,11 @@ chi2_test <- chisq.test(contingence_table)
 print(chi2_test)
 
 ```
-
-Plusieurs weather_code ont des fréquences trop faibles. On va donc
-utiliser le test de Fisher.
+\
+Il semble que weather_code et season sont lié car le p est très faible.
+Cependant, plusieurs weather_code ont des fréquences trop faibles. 
+\
+On va donc utiliser le test de Fisher pour vérifier ce résultat.
 
 ```{r}
 fisher.test(contingence_table, simulate.p.value = TRUE)
@@ -324,9 +361,10 @@ fisher.test(contingence_table, simulate.p.value = TRUE)
 
 p est de valeur suffisamment faible pour conclure que les saisons ont un
 impact sur les types de conditions météorologique.
-
+\newpage
 5.  Un lien entre une variable quantitative (cnt) et une variable
     qualitative (weather_code).
+\
 
 ```{r}
 weather_dist<-bike_data %>% group_by(weather_code) %>%
@@ -341,7 +379,7 @@ weather_dist
 
 On voit que la fréquence d'apparition d'un code météo est équivalente au
 pourcentage d'emprunt que représente ce code. On peut donc se demander
-si la météo influe sur l'emprunt de vélib
+si la météo influence l'emprunt de vélib
 
 Détails du nombre d'emprunt selon le code météo.
 
@@ -360,7 +398,7 @@ summary_by_weather <- bike_data %>%
 print(summary_by_weather)
 
 ```
-
+\newpage
 Visualisons cela mieux avec les Boxplots des distributions des emprunts
 (cnt) suivant la météo (weather_code).
 
@@ -375,7 +413,7 @@ ggplot(bike_data, aes(x = weather_code, y = cnt, fill = weather_code)) +
   theme_minimal()
 
 ```
-
+\newpage
 Histogrammes représentant les distributions des emprunts (cnt) suivant
 la météo (weather_code).
 
@@ -389,13 +427,13 @@ ggplot(bike_data, aes(x =cnt,fill=weather_code)) +
 
 Ce graphe (bien que nous l'admettons difficilement lisible) nous montre
 quand même des différences entre les codes météo.
-
+\newpage
 Calculons le rapport de corrélation empirique entre cnt et weather_code.
 
 ```{r}
 eta2(bike_data$cnt,bike_data$weather_code)
 ```
-
+\
 La corrélation est assez faible. Maintenant regardons si oui ou non ces
 deux variables sont reliés.
 
@@ -407,13 +445,13 @@ summary(anova_result)
 La valeur de p nous dit que le weather_code influe sur le nombre
 d'emprunt mais le coefficient de corrélation nous dit que le
 weather_code a une petite influence sur cnt.
-
+\newpage
 6.  Ajustement d'un modèle linéaire, avec l'étape de validation.
+\
 
 Construisons un modèle linéaire entre cnt et t1.
 
 ```{r}
-cat("-----------modele t1------------")
 modele_lm <- lm(cnt ~ t1, data = bike_data)
 
 summary(modele_lm)
@@ -430,19 +468,18 @@ influencer cnt. Nous créerons donc une nouvelle variable hour.
 bike_data<-bike_data%>%
   mutate(hour=hour(timestamp))
 
-
-cat("-----------modele hour-----------")
 modele_lm <- lm(cnt ~ hour, data = bike_data)
 
 summary(modele_lm)
 ```
 
 hour a donc une influence sur cnt. Cependant cette influence doit aussi
-dépendre des pics horaires lié à l'heure d'emprunt. Pour prendre en
-compte les pics horaire étudions un modèle créé avec poly(hour,2).
+dépendre des pics horaires lié à l'heure d'emprunt. 
+\
+Pour prendre en compte les pics horaire étudions un modèle créé avec poly(hour,2).
+
 
 ```{r}
-cat("-----------modele poly hour-----------")
 modele_lm <- lm(cnt ~ poly(hour,2), data = bike_data)
 
 summary(modele_lm)
@@ -454,9 +491,8 @@ car R2 est égal à 0.31.
 Maintenant créons un modèle plus précis en utilisant t1 et poly(hour,2).
 
 ```{r}
-cat("-----------modele tt variable poly hour-----------")
 modele_lm <- lm(cnt ~ t1+poly(hour,2), data = bike_data)
-#+is_holiday+is_weekend+weather_code+wind_speed+season+hum+
+
 summary(modele_lm)
 ```
 
@@ -478,7 +514,9 @@ geom_smooth()+
 labs(y="Résidus",
      x="Valeur ajustée")+
 theme_minimal()
-
+```
+\newpage
+```{r}
 qqnorm(residuals(modele_lm))
 qqline(residuals(modele_lm),col="red")
 ```
@@ -486,12 +524,10 @@ qqline(residuals(modele_lm),col="red")
 On voit sur les 2 graphes que la normalité des résidus semble peut
 probable. En effet, les résidus fonction des valeurs ajustés forme un U
 et le QQ plot s'écarte trop de la droite
+\
+
 
 ```{r}
-# Installer le package nortest si nécessaire
-if (!require(nortest)) install.packages("nortest")
-library(nortest)
-
 # Test d'Anderson-Darling
 ad_test <- ad.test(residuals(modele_lm))
 print(ad_test)
@@ -499,7 +535,7 @@ print(ad_test)
 
 La non normalité constater sur les graphes est confirmer avec le test de
 Anderson-Darling.
-
+\newpage
 Etudions l'homoscédaticité du modèle.
 
 ```{r}
@@ -520,8 +556,8 @@ theme_minimal()
 On voit un patern et une bande. Cela montre une hétéroscédaticité.
 
 Ce modèle a donc une hétéroscédaticité et une non normailté des résidus.
-
-Essayons avec le log de cnt. Cela permet d'amoindrir les valeurs
+\newpage
+Essayons de créer un nouveau modèle avec le log de cnt. Cela permet d'amoindrir les valeurs
 extrèmes.
 
 ```{r}
@@ -529,14 +565,14 @@ bike_data<-bike_data%>%
   mutate(cnt_log=log(cnt+1))
 
 
-cat("-----------modele tt variable poly hour et log de cnt-----------")
 modele_lm <- lm(cnt_log ~ t1+poly(hour,2), data = bike_data)
 #wind_speed+is_holiday+is_weekend+season+hum+weather_code
 summary(modele_lm)
 ```
 
-On voit que ce modèle est encore plus précis que le précédent. Testons
-la normalité des résidus et l'homscédaticité du modèle.
+On voit que ce modèle est encore plus précis que le précédent.
+\newpage
+Testons la normalité des résidus et l'homscédaticité du modèle.
 
 ```{r}
 ggplot(modele_lm, aes(x=modele_lm$fitted.values,y=modele_lm$residuals)) +
@@ -545,22 +581,19 @@ geom_smooth()+
 labs(y="Résidus",
      x="Valeur ajustée")+
 theme_minimal()
-
+```
+\newpage
+```{r}
 qqnorm(residuals(modele_lm))
 qqline(residuals(modele_lm),col="red")
 ```
 
 ```{r}
-# Installer le package nortest si nécessaire
-if (!require(nortest)) install.packages("nortest")
-library(nortest)
-
 # Test d'Anderson-Darling
-
 ad_test <- ad.test(residuals(modele_lm))
 print(ad_test)
 ```
-
+\newpage
 ```{r}
 residu<-modele_lm$residuals
 valeur_ajuste<-modele_lm$fitted.values
@@ -578,7 +611,7 @@ theme_minimal()
 
 On voit un patern et des bandes. Cela montre une hétéroscédaticité.
 
-Notre modèle ayant un R\^2=0.5833 capture une bonne part des variations
+Notre modèle ayant un R2=0.5833 capture une bonne part des variations
 de log(cnt). Cependant, nous observons une non-normalité des résidus, vu
 sur les graphes et à l'aide du test d'Anderson-Darling, et une
 hétéroscédaticité, vu sur le graphe.
