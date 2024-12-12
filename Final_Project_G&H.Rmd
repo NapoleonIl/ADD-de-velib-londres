@@ -1,0 +1,209 @@
+---
+title: "Final project"
+author: "S&T"
+date: "2024-12-12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# I.Choix de donnes
+
+0.  Installation des packages.
+
+::: hiddensolution
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+if (! 'devtools' %in% installed.packages()[,1]){
+  install.packages("devtools")
+}
+
+if (! 'fontawesome' %in% installed.packages()[,1]){
+  devtools::install_github("rstudio/fontawesome")
+}
+```
+:::
+
+::: hiddensolution
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+available_packages <- installed.packages()[,1]  # what's available ?
+
+if (! 'pacman' %in% available_packages){
+  install.packages("pacman")        # install if needed
+}
+
+pacman::p_load(tidyverse)   # meta-package
+pacman::p_load(questionr)
+pacman::p_load(ggstats)
+pacman::p_load(BioStatR)
+rm(available_packages)      # Ockham's razor
+
+old_theme <- theme_set(theme_minimal(base_family = "Helvetica Neue"))
+
+#permet de lire le fichier excel .xlsx
+if (!require("readxl")) install.packages("readxl")
+
+# Installer le package nortest si nécessaire
+if (!require(nortest)) install.packages("nortest")
+
+
+# Load necessary libraries
+library(nortest)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(BioStatR)
+library(readxl)
+```
+:::
+
+1.  importation des données.
+
+```{r}
+# Load the dataset (imported from 'file' at first)
+bike_data <- london_merged
+```
+
+\newpage
+
+2.  Transformation des données.
+
+```{r}
+#on transforme les colonnes season et weather_code pour plus de simpicité.
+bike_data <- bike_data %>%
+  mutate(
+    season = factor(season, labels = c("Spring", "Summer", "Fall", "Winter")),
+    weather_code = factor(weather_code, 
+                          levels = c(1, 2, 3, 4, 7, 10, 26, 94),
+                          labels = c("Clear", "Few Clouds", "Broken Clouds", 
+                                     "Cloudy", "Rain", "Thunderstorm", 
+                                     "Snowfall", "Freezing Fog"))
+  )
+```
+
+
+# II. Description des données: Metadata
+
+```         
+"cnt" - the count of a new bike shares 
+"t1" - real temperature in C
+"t2" - temperature in C "feels like" 
+"hum" - humidity in percentage
+"wind_speed" - wind speed in km/h 
+"weather_code" - category of the weather 
+"is_holiday" - booleanfield - 1 holiday / 0 non holiday
+"is_weekend" - boolean field - 1if the day is weekend 
+"season" -category field meteorological seasons: 0-spring ; 1-summer; 2-fall; 3-winter. (cela a été transformé dans le I)
+```
+
+```         
+"weather_code" category description:
+
+1 = Clear ; mostly clear but have some values with haze/fog/patches of fog/ fog in vicinity 
+2 = scattered clouds / few clouds 
+3 = Broken clouds
+4 = Cloudy 
+7 = Rain/ light Rain shower/ Light rain 
+10 = rain with thunderstorm 
+26 = snowfall 
+94 = Freezing Fog
+(cela a été transformé dans le I)
+```
+\newpage
+```{r}
+# Inspect the data
+colSums(is.na(bike_data)) # Check de la non presence de valeur na
+summary(bike_data)
+```
+
+Ce jeu de donnée décrit les emprunts de vélib à Londre heure par heure
+de 2015 à 2017. Pour offrir un service plus qualitatif, il serait
+intéressant de pouvoir prédire le nombre d'emprunt selon certaines des
+variables donnée. Pour cela nous analyserons d'abord certaines variables
+et leur lien avant de répondre à la question: Peut-on créer un modèle à
+partir des variables données pour prédire l'emprunt de vélo(cnt)?
+
+**The data stes are clean now and require no additional manipulation
+##Mini-projet : nous avons examiné les effets univariés et bivariés de la météo, de l'heure et de la saison sur le volume de location.
+##Projet final : basé sur les résultats du mini-projet, étendu :
+1.Identifier les variables clés affectant le volume de location à l'aide de l'analyse en composantes principales (ACP).
+2.Construire un modèle de régression linéaire multiple pour prédire le volume de location.
+3.Découvrir des modèles de location dans les données grâce à l'analyse de grappes (K-means et grappes hiérarchiques).
+\newpage
+# III. ANALYSE SUR R
+\
+3. l'analyse en composantes principales (ACP)
+Commencez l'analyse étendue par les étapes suivantes :
+
+1.Sélectionner les variables et les standardiser 
+2.Appliquez l'ACP et vérifiez la variance expliquée 
+3.Interprétation des composantes principales 
+```{r}
+library(FactoMineR)
+library(factoextra)
+pca1 <- bike_data %>%
+  select(t1, t2, hum, wind_speed) %>% 
+  scale()
+
+pca_result <- PCA(pca1, graph = T)
+fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 80))  # 方差解释图
+
+```
+
+
+
+
+
+
+
+\newpage
+
+4. Regression analysis
+The lm() analysis in the mini project demonstrated univariate relationships well, but the final project required a multivariate linear regression model (including interaction terms):
+  1.Constructing multivariate models:
+```{r}
+bike_data<-bike_data%>%
+  mutate(hour=hour(timestamp))
+
+modele_lm <- lm(cnt ~ t1 + poly(hour, 2) + season + weather_code, data = bike_data)
+summary(modele_lm)
+
+```
+  
+  2.Diagnostic model (residual analysis):
+```{r}
+plot(modele_lm$fitted.values, modele_lm$residuals)
+qqnorm(residuals(modele_lm))
+qqline(residuals(modele_lm), col = "red")
+
+```
+  
+  
+  3.Interpretation:
+    Which variables have a significant effect on rental volume?
+    Is there multicollinearity or heteroskedasticity in the model?
+
+
+\newpage
+
+5. Classification analysis
+K-means clustering:
+```{r}
+library(cluster)
+
+
+kmeans_result <- kmeans(pca1, centers = 3, nstart = 25)
+fviz_cluster(kmeans_result, data = pca1)
+
+```
+\newpage
+2.Hierarchical clustering:
+```{r}
+hc <- hclust(dist(pca1), method = "ward.D2")
+plot(hc)
+rect.hclust(hc, k = 3)
+
+```
+
