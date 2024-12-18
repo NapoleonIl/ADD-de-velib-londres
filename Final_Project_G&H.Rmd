@@ -131,6 +131,9 @@ partir des variables données pour prédire l'emprunt de vélo(cnt)?
 1.Identifier les variables clés affectant le volume de location à l'aide de l'analyse en composantes principales (ACP).
 2.Construire un modèle de régression linéaire multiple pour prédire le volume de location.
 3.Découvrir des modèles de location dans les données grâce à l'analyse de grappes (K-means et grappes hiérarchiques).
+
+
+
 \newpage
 # III. ANALYSE SUR R
 \
@@ -144,11 +147,21 @@ Commencez l'analyse étendue par les étapes suivantes :
 library(FactoMineR)
 library(factoextra)
 pca1 <- bike_data %>%
-  select(t1, t2, hum, wind_speed) %>% 
-  scale()
+  select( t1, t2, hum, wind_speed) %>% 
+  scale() #centre- normalise
 
 pca_result <- PCA(pca1, graph = T)
-fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 80))  # 方差解释图
+fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 80)) 
+get_eig(pca_result) %>% knitr::kable()
+
+fviz_contrib(pca_result, 'ind', axes = 1:2)
+
+pca_result$eig
+
+```
+```{r}
+
+pca_result$var$cos2
 
 ```
 
@@ -166,10 +179,21 @@ The lm() analysis in the mini project demonstrated univariate relationships well
 ```{r}
 bike_data<-bike_data%>%
   mutate(hour=hour(timestamp))
+```
 
+
+```{r}
+modele_lm <- lm(cnt ~  pca_result$ind$coord[, 1:2] + hour + season ,data = bike_data)
+summary(modele_lm)
+```
+
+
+```{r}
 modele_lm <- lm(cnt ~ t1 + poly(hour, 2) + season + weather_code, data = bike_data)
 summary(modele_lm)
-
+```
+```{r}
+aov(cnt ~ +t1+ weather_code + season,data = bike_data)
 ```
   
   2.Diagnostic model (residual analysis):
