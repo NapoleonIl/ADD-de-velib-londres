@@ -1,0 +1,763 @@
+---
+title: "Projet2 analyse de donnée - Shuaibo Huang "
+author: "Shuaibo Huang"
+date: "2024-12-12"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+    highlight: tango  # Style de surlignage du code
+    toc: true       # Table des matières
+    toc_depth: 2    # Profondeur de la table des matières
+includes:
+  in_header: preamble.tex
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# I.Choix de donnes
+
+0.  Installation des packages.
+
+::: hiddensolution
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+if (! 'devtools' %in% installed.packages()[,1]){
+  install.packages("devtools")
+}
+
+if (! 'fontawesome' %in% installed.packages()[,1]){
+  devtools::install_github("rstudio/fontawesome")
+}
+```
+:::
+
+::: hiddensolution
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+available_packages <- installed.packages()[,1]  # what's available ?
+
+if (! 'pacman' %in% available_packages){
+  install.packages("pacman")        # install if needed
+}
+
+pacman::p_load(tidyverse)   # meta-package
+pacman::p_load(questionr)
+pacman::p_load(ggstats)
+pacman::p_load(BioStatR)
+rm(available_packages)      # Ockham's razor
+
+old_theme <- theme_set(theme_minimal(base_family = "Helvetica Neue"))
+
+#permet de lire le fichier excel .xlsx
+if (!require("readxl")) install.packages("readxl")
+
+# Installer le package nortest si nécessaire
+if (!require(nortest)) install.packages("nortest")
+
+
+# Load necessary libraries
+library(nortest)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(BioStatR)
+
+```
+:::
+
+1.  importation des données.
+
+```{r}
+# Load the dataset (imported dataset from 'file' at first)
+bike_data <- read_excel("london_merged.xlsx")
+```
+
+\newpage
+
+2.  Transformation des données.
+
+```{r}
+#on transforme les colonnes season et weather_code pour plus de simpicité.
+bike_data <- bike_data %>%
+  mutate(
+    season = factor(season, labels = c("Spring", "Summer", "Fall", "Winter")),
+    weather_code = factor(weather_code, 
+                          levels = c(1, 2, 3, 4, 7, 10, 26, 94),
+                          labels = c("Clear", "Few Clouds", "Broken Clouds", 
+                                     "Cloudy", "Rain", "Thunderstorm", 
+                                     "Snowfall", "Freezing Fog")),
+    hour = hour(timestamp) #rajout l'heure  pour lm
+  )
+```
+
+# II. Description des données: Metadata
+
+-   **Source** : Données téléchargées depuis [London Bike Sharing
+    Dataset](https://www.kaggle.com/datasets/hmavrodiev/london-bike-sharing-dataset)\
+-   **Période** : 2015-01 à 2017-01, résolution horaire\
+-   **Dimensions** : 17 413 observations, 10 variables\
+-   **Valeurs manquantes** : Aucune (`colSums(is.na(bike_data))` = 0)
+
+```{r}
+# Inspect the data
+colSums(is.na(bike_data)) 
+summary(bike_data)
+```
+
+\newpage
+
+```         
+"cnt" - the count of a new bike shares 
+"t1" - real temperature in C
+"t2" - temperature in C "feels like" 
+"hum" - humidity in percentage
+"wind_speed" - wind speed in km/h 
+"weather_code" - category of the weather 
+"is_holiday" - booleanfield - 1 holiday / 0 non holiday
+"is_weekend" - boolean field - 1if the day is weekend 
+"season" -category field meteorological seasons: 0-spring ; 1-summer; 2-fall; 3-winter. (cela a été transformé dans le I)
+```
+
+```         
+"weather_code" category description:
+
+1 = Clear ; mostly clear but have some values with haze/fog/patches of fog/ fog in vicinity 
+2 = scattered clouds / few clouds 
+3 = Broken clouds
+4 = Cloudy 
+7 = Rain/ light Rain shower/ Light rain 
+10 = rain with thunderstorm 
+26 = snowfall 
+94 = Freezing Fog
+(cela a été transformé dans le I)
+```
+
+Ce jeu de donnée décrit les emprunts de vélib à Londre heure par heure
+de 2015 à 2017. Pour offrir un service plus qualitatif, il serait
+intéressant de pouvoir prédire le nombre d'emprunt selon certaines des
+variables donnée. Pour cela nous analyserons d'abord certaines variables
+et leur lien avant de répondre à la question: Peut-on créer un modèle à
+partir des variables données pour prédire l'emprunt de vélo(cnt)?
+
+\*The datastes are clean now and require no additional manipulation
+
+**Projet final : basé sur les résultats du mini-projet**, étendu :
+1.Identifier les variables clés affectant le volume de location à l'aide
+de l'analyse en composantes principales (ACP). 2.Construire un modèle de
+régression linéaire multiple pour prédire le volume de location.
+3.Découvrir des modèles de location dans les données grâce à l'analyse
+de grappes (K-means et grappes hiérarchiques).
+
+\newpage
+
+# III. ANALYSE SUR R
+
+\
+
+\##**l'analyse en composantes principales (ACP)**
+
+1.Sélectionner les variables\
+
+```         
+Les variables `t1` (température réelle), `t2` (température ressentie),
+`hum` (humidité) et `wind_speed` (vitesse du vent) ont été choisies car
+elles représentent des facteurs environnementaux potentiellement
+influents sur la demande de vélos.
+```
+
+```         
+Note standardisée : scale() : centrage et standardisation des variables
+dans le but d'éliminer les effets des différentes échelles.
+```
+
+```{r}
+library(FactoMineR)
+library(factoextra)
+
+# Sélection et normalisation des variables environnementales
+pca1 <- bike_data %>%
+  select(t1, t2, hum, wind_speed) %>% 
+  scale()  # Centrage-réduction 
+# Appliquer l'ACP
+pca_result <- PCA(pca1, graph = F)  # Désactiver les graphiques automatiques
+# Visualisation des valeurs propres (variance expliquée)
+fviz_eig(
+  pca_result, 
+  addlabels = TRUE, 
+  ylim = c(0, 80),
+  main = "Variance expliquée par les composantes principales",
+  xlab = "Composantes principales",
+  ylab = "Pourcentage de variance expliquée"
+) + theme_minimal()
+```
+
+**Screeplot** Les 2 premières composantes expliquent 86% de la variance
+totale.
+
+\newpage
+
+```{R}
+
+# Tableau des valeurs propres et variance cumulative
+eigen_table <- get_eig(pca_result) %>% 
+  knitr::kable(caption = "Valeurs propres et variance expliquée")
+print(eigen_table)
+
+# Visualisation des contributions des variables aux axes
+fviz_pca_var(
+  pca_result,
+  col.var = "cos2",  # Couleur selon la qualité de représentation (cos²)
+  gradient.cols = c("blue", "orange", "red"),
+  repel = TRUE,       # Éviter le chevauchement des labels
+  title = "Contribution des variables aux axes PCA"
+) + theme_minimal()
+
+
+```
+
+**Cercle des corrélations** **CP1** : Axe de "Conditions météo douces"
+
+Fortes corrélations positives avec `t1` (température) et `t2`
+(température ressentie).
+
+Corrélation négative avec `hum` (humidité).
+
+Explication : Les jours chauds et secs sont associés à cet axe.
+
+**CP2** : Axe de "`Vent`"
+
+Forte corrélation negative avec `wind_speed`.
+
+Explication : Cet axe capture les variations de vitesse du vent.
+\newpage
+
+**Projection des individus colorés par saison**
+
+```{r}
+#Visualize acp : Graph of individuals
+fviz_pca_ind(
+  pca_result,
+  habillage = bike_data$season,  # Colorer par saison
+  palette = c("pink", "red2", "yellow", "green2"),  # Palette personnalisée
+  addEllipses = TRUE,  # Ajouter des ellipses de concentration
+  title = "Distribution des observations par saison (CP1 vs CP2)"
+) + theme_minimal()
+
+```
+
+Été (rouge) : Regroupé à droite (CP1 élevé = températures élevées).
+
+Hiver (vert) : Regroupé à gauche (CP1 faible = températures basses).
+
+Printemps/Automne : Position intermédiaire avec plus de dispersion.
+
+\newpage
+
+**Analyse approfondie à ajouter**\
+(a) Contributions des variables aux composantes\
+
+```{r}
+# Contribution des variables aux CP1 et CP2
+contrib_table <- pca_result$var$contrib %>% 
+  as.data.frame() %>% 
+  rownames_to_column("Variable") %>% 
+  knitr::kable(caption = "Contribution (%) des variables aux axes")
+print(contrib_table)
+```
+
+```         
+`t1` contribue à 39,1% de CP1, confirmant son rôle dominant.
+
+`wind_speed` contribue à 72,5% de CP2.
+```
+
+\
+(b) Qualité de représentation (cos²)\
+
+```{r}
+# Cos² des variables (qualité de projection)
+cos2_table <- pca_result$var$cos2 %>% 
+  as.data.frame() %>% 
+  rownames_to_column("Variable") %>% 
+  knitr::kable(caption = "Qualité de représentation (cos²)")
+print(cos2_table)
+```
+
+```         
+`t1` et `t2` ont un cos² élevé sur CP1 (>0.8) → Bien représentées.
+
+`wind_speed` a un cos² ainsi élevé sur CP2 (>0.7).
+```
+
+\newpage
+
+\
+###Synthèse des résultats **Conclusion PCA :**\
+
+```         
+1.  CP1 (58,2% de variance) : Contrastre "Températures élevées vs Humidité basse".
+
+2.  CP2 (26,2% de variance) : Représente la "Vitesse du vent".
+
+3.  Saisonnalité : Les saisons se regroupent clairement dans l'espace PCA.
+
+4.  Application : Ces composantes pourront être utilisées dans la régression ou la classification pour réduire la dimensionnalité.
+```
+
+\newpage
+
+##Modèle Linéaire Gaussien : Régression Multiple & Diagnostic
+----------------------------------------------------------
+ 1. Construction des modèles multivariés
+----------------------------------------------------------
+```{r}
+
+
+# Intégrer les scores PCA dans le dataframe principal
+bike_data <- bike_data %>%
+  mutate(
+    CP1 = pca_result$ind$coord[, 1],  # Score de la 1ère composante
+    CP2 = pca_result$ind$coord[, 2]   # Score de la 2ème composante
+  )
+
+# Modèle 1 : Régression avec composantes PCA + variables temporelles
+model_pca <- lm(
+  cnt ~ CP1 + CP2 + poly(hour, 2) + season,
+  data = bike_data
+)
+
+# Modèle 2 : Régression avec variables brutes + interactions
+model_full <- lm(
+  cnt ~ t1 + poly(hour, 2) + season * weather_code + hum + wind_speed,
+  data = bike_data
+)
+```
+
+\newpage
+2. Diagnostics du modèle
+----------------------------------------------------------
+```{r}
+
+# (1) Analyse des résidus
+plot(model_full$fitted.values, model_full$residuals)
+qqnorm(residuals(model_full))
+qqline(residuals(model_full), col = "red")
+
+# (2) Test d'hétéroscédasticité (Breusch-Pagan)
+require(lmtest)
+bptest(model_full)  # Si p < 0.05 → hétéroscédasticité
+
+# (3) Normalité des résidus (Anderson-Darling)
+
+ad.test(residuals(model_full))  # Si p < 0.05 → non-normalité
+```
+```{r}
+
+# (1) Analyse des résidus
+plot(model_pca$fitted.values, model_full$residuals)
+qqnorm(residuals(model_pca))
+qqline(residuals(model_pca), col = "red")
+
+# (2) Test d'hétéroscédasticité (Breusch-Pagan)
+require(lmtest)
+bptest(model_pca)  # Si p < 0.05 → hétéroscédasticité
+
+# (3) Normalité des résidus (Anderson-Darling)
+
+ad.test(residuals(model_pca))  # Si p < 0.05 → non-normalité
+```
+`
+Regardons les résultats du diagnostic de ces deux modèles, qui sont plus ou moins identiques :
+```         
+Distribution des résidus : l'hétéroscédasticité était évidente sur les graphiques des valeurs ajustées des résidus, 
+les graphiques Q-Q et le test d'Anderson-Darling ont également indiqué une non-normalité dans la distribution des résidus, et le test de Breusch-Pagan (p < 2,2e-16) a encore confirmé l'hétéroscédasticité significative.
+Ayant appliqué une transformation log en mini-projet, ce qui donne la meme resultat de non-normalité...
+```
+
+\newpage
+**Choix d'un meilleur modèle**
+
+(a) Comparaison des modèles
+\
+Linear Model with AIC or BIC selection, and with the contrasts sum (the sum of the coefficients is 0) if any categorical variables
+\
+```{r}
+# Comparaison AIC/BIC
+knitr::kable(data.frame(
+  Modèle = c("PCA-based", "Full Model"),
+  AIC = c(AIC(model_pca), AIC(model_full)), #Test for all the coefficients, Handle missing values
+  BIC = c(BIC(model_pca), BIC(model_full))
+))
+```
+
+Le modèle complet (model_full) a un AIC plus bas → meilleur ajustement.
+
+\
+(b) Coefficients significatifs\
+
+```{r}
+summary(model_full) %>% 
+  broom::tidy() %>% 
+  filter(p.value < 0.05) %>% 
+  knitr::kable(caption = "Variables significatives (p < 0.05)")
+```
+Explication: 
+```         
+`t1` : +38.8 locations par °C (toutes choses égales par ailleurs),Cela
+signifie que le temps chaud favorise l'utilisation de Vélib.
+
+`poly(hour, 2)` : poly(hour, 2)1 : Effet quadratique de l'heure avec des
+pics de locations aux heures de pointe, par exemple autour de 8h et 18h.
+poly(hour, 2)2 : Correction quadratique qui ajuste l'effet positif
+initial et reflète la baisse des locations en dehors des pics.
+
+`hum` : -14.35 locations pour chaque augmentation d'1% d'humidité
+(toutes choses égales par ailleurs).
+
+`wind_speed` : -8.57 locations par km/h de vent supplémentaire (toutes
+choses égales par ailleurs).
+
+`weather_codeRain` : -210 locations en cas de pluie vs. temps clair.
+Mise en évidence de l'impact négatif du mauvais temps sur la demande.
+
+`weather_codeThunderstorm` : -800 locations en cas d'orage vs. temps
+clair.
+```
+
+\newpage
+
+Analyse approfondie à ajouter\
+(a) Sélection de variables par étape\
+
+```{r}
+# Sélection progressive (stepwise)
+library(MASS)
+step_model <- stepAIC(model_full, direction = "both")
+summary(step_model)
+```
+
+**Résultat** : D'après l'analyse stepAIC, la suppression de `hum` ou
+`wind_speed` conduit à une augmentation notable de l'AIC, indiquant que
+ces variables sont pertinentes pour le modèle. Ainsi, le modèle optimal
+retient `hum` et `wind_speed` car elles contribuent significativement à
+l'ajustement global.
+
+\newpage
+
+(b) Validation croisée(to be compared with pca model)
+
+```{r}
+
+# Validation sur 80% des données
+set.seed(1)
+train_indices <- sample(1:nrow(bike_data), 0.8 * nrow(bike_data))
+train_data <- bike_data[train_indices, ]
+test_data <- bike_data[-train_indices, ]
+
+# Entraînement et prédiction
+final_model <- lm(cnt ~ t1 + poly(hour, 2) + season * weather_code, data = train_data)
+test_data$pred <- predict(final_model, newdata = test_data)
+
+# Calcul du RMSE
+rmse <- sqrt(mean((test_data$cnt - test_data$pred)^2))
+cat("RMSE :", rmse)  # Plus bas → meilleure performance
+```
+
+\newpage
+
+\
+(c) Comparaison ANOVA\
+
+```{r}
+# ANOVA pour variables catégorielles
+anova_result <- aov(cnt ~ season + weather_code, data = bike_data)
+anova_df <- as.data.frame(summary(anova_result)[[1]])
+knitr::kable(anova_df, caption = "ANOVA : Effet de la saison et météo")
+
+```
+**Analyse :**
+`season` a un effet significatif sur le nombre de locations (F = 286, p
+\< 0.001).
+
+`weather_code` contribue également de manière significative au modèle (p
+\< 0.001), qui explique une variance supplémentaire par rapport à un
+modèle ne contenant que d'autres variables.
+
+\newpage
+
+###Synthèse des résultats 
+**Conclusions du modèle**:
+
+1.  Variables clés : 'Heure' (effet quadratique), température't1',
+    'saison'.
+
+2.  Interactions : La saison modère l'effet de la température.
+
+3.  Diagnostics :**Hétéroscédasticité** (Breusch-Paganp p \< 2,2e-16) →
+    utiliser des erreurs robustes.
+
+4.  Limitations et perspectives :R² = 0.43 → 43% de variance expliquée.
+    Les variables manquantes (ex : des événements spéciaux ou d'autres
+    facteurs contextuels) pourraient améliorer le modèle. Les problèmes
+    d'hétéroscédasticité et de non-normalité des résidus indiquent que
+    des méthodes alternatives, telles que la régression robuste ou des
+    transformations appropriées, pourraient être explorées pour
+    optimiser le modèle.
+
+\newpage
+
+##Classification : K-means vs. Hiérarchique: **1. K-means Clustering**\
+(a) Méthode du coude (K-means) **Objectif** : Déterminer le nombre
+optimal de classes $K$ en minimisant l'inertie intra-classe (WSS).
+
+```{r}
+# Choix du nombre de classes : diagramme d’inertie
+
+K <- 10  
+wss <- numeric(K)  
+
+# # Calculer WSS pour K=1 à 10
+for (k in 1:K) {
+  wss[k] <- sum(kmeans(pca1, centers = k)$withinss)
+}
+
+library(ggplot2)
+ggplot(data.frame(Nombre_classes = 1:K, Inertie = wss)) +
+  aes(x = Nombre_classes, y = Inertie) +
+  geom_col(fill = "blue4", width = 0.7) +  
+  geom_vline(xintercept = 3, linetype = "dashed", color = "red", linewidth = 1) + 
+  labs(
+    title = "Méthode du coude pour choix de K",
+    x = "Nombre de classes",
+    y = "Inertie totale intra classes"
+  ) +
+  scale_x_continuous(breaks = 1:K) +  
+  theme_minimal() 
+```
+
+```         
+On voit que les plus grosses pertes sont lors de passage de 2 classes à 1 classes, et de 3 à 2 dans une moindre mesure. On pourrait garder 3 ou 2 classes. 
+La courbe s'aplatit donc à K=3 → Choix optimal pour équilibrer simplicité et variance expliquée.
+```
+
+\newpage
+
+\
+(b) Validation par indice de silhouette\
+
+```{r}
+#Méthode du silhouette
+fviz_nbclust(pca1, kmeans, method = "silhouette", k.max = 10) +
+  labs(title = "Indice de silhouette pour choix de K")
+```
+
+Le pic de silhouette à K=2 different avec notre choix precedent,suggère
+que méthode du coude présente des limites. mais on avance notre anaylse
+sur 3 grappes, vu que on a pas vu cette methode en CM. \newpage
+**K-means Clustering**
+\
+(a) Résultats & Visualisation
+\
+
+```{r}
+set.seed(1)
+kmeans_result <- kmeans(pca1, centers = 3, nstart = 25)
+
+# Projection sur ACP
+fviz_cluster(kmeans_result, data = pca1, 
+             palette = "Set2", 
+             geom = "point",
+             ellipse.type = "convex",
+             main = "Clusters K-means projetés sur PCA") 
+```
+
+\newpage
+
+\
+(b) Profil des clusters\
+
+```{r}
+#rajout cluster dans dataset
+bike_data %>%
+  mutate(Cluster = kmeans_result$cluster) %>%
+  group_by(Cluster) %>%
+  summarise(
+    Température = mean(t1),
+    Humidité = mean(hum),
+    Vent = mean(wind_speed),
+    Locations = mean(cnt)
+  ) %>% 
+  knitr::kable(caption = "Caractéristiques moyennes par cluster")
+```
+
+```         
+Cluster 1 : Conditions idéales (tempéré, sec) → Pic de demande.
+
+Cluster 2 : Temps froid et humide → Locations faibles.
+
+Cluster 3 : humide haut malgré température modérée → Réduction d'usage.
+```
+
+\newpage
+
+**2. Classification Hiérarchique**
+
+(a) Construction du dendrogramme
+
+```{r}
+#Utilisions le numéro de ligne de bike_data comme identifiant.
+row.names(pca1) <- as.character(1:nrow(bike_data))
+
+# Effectuer la classification hiérarchique
+hc <- hclust(dist(pca1), method = "ward.D2")
+
+# Afficher le dendrogramme
+plot(hc, cex = 0.1, main = "Dendrogramme (méthode de Ward)")
+rect.hclust(hc, k = 3, border = "red",)
+```
+\
+Remarque:
+\
+Les résultats ne sont pas faciles à lire et ont un temps de vol long (complexité O(n^2))
+
+\newpage
+(b) Recuperer les labels (etiquettes) si besoin\
+
+```{r}
+# Extraire les étiquettes et assigner les grappes
+observation_labels <- hc$labels
+cluster_hc <- cutree(hc, k = 3)
+result <- data.frame(Observation = observation_labels, Cluster = cluster_hc)
+
+# Regroupement des résultats(number) par grappe
+cluster_labels <- split(result$Observation, result$Cluster)
+cluster_labels
+
+```
+
+\newpage
+
+\
+(b) Comparaison avec K-means\
+
+```{r}
+# Table de contingence
+cross_table <- table(Kmeans = kmeans_result$cluster, Hierarchical = cutree(hc, k = 3))
+knitr::kable(cross_table, caption = "Recouvrement des clusters")
+```
+##  Synthèse des comparaisons
+
+
+**Accord et désaccord par cluster** : 
+- ✅ **Accord fort** :\
+- Cluster 3 (K-means) ↔ Cluster 3 (Hiérarchique)\
+- Cluster 2 (K-means) ↔ Cluster 1 (Hiérarchique)\
+- ❌ **Désaccord notable** :\
+- Cluster 1 (K-means) sont dispersés en plusieurs grappes dans le cadre
+d'un regroupement hiérarchique.\
+- La grappe 2 pour le regroupement hiérarchique contient des
+échantillons mixtes (grappes 1 et 3 de la méthode des K-moyennes).
+
+### 1. Accord global
+
+Observations cohérentes :
+
+Cluster 3 (K-means) ↔ Cluster 3 (Hiérarchique) : 4 120 échantillons
+étaient identiques, ce qui suggère que les deux méthodes capturent le
+même groupe à haute densité (ex: les utilisateurs « dans des conditions
+idéales »).
+
+Cluster 2 (K-means) ↔ Cluster 1 (Hiérarchique) : 4 087 échantillons se
+chevauchent, ce qui peut correspondre à des scénarios de « mauvais temps
+». \
+### 2. Désaccords majeurs
+
+| Conflit de clusters            | Nombre d'observations | Analyse des causes                                                                                                                                                                                                       |
+|----------------|----------------|-----------------------------------------|
+| **K-means 1 ↔ Hiérarchique 1** | 0                     | Aucune observation de K-means n'est classée dans le Cluster 1 hiérarchique. Probablement parce que la classification hiérarchique a capturé des sous-structures non identifiées par K-means.                             |
+| **K-means 1 ↔ Hiérarchique 2** | 1921                  | Ces observations sont classées dans le Cluster 2 hiérarchique, ce qui pourrait correspondre à des **conditions météorologiques transitoires** non différenciées par K-means (ex: humidité modérée avec vent irrégulier). |
+| **K-means 3 ↔ Hiérarchique 2** | 1669                  | Le Cluster 2 hiérarchique semble fusionner plusieurs sous-groupes de K-means, notamment une **combinaison d’humidité élevée et de vitesse de vent modérée** qui n’a pas été isolée par K-means.                          |
+
+------------------------------------------------------------------------
+
+### **Conclusion finale** :  
+Les deux méthodes révèlent des insights complémentaires. Alors que **K-means** offre une solution pragmatique pour les big-data, la **classification hiérarchique** enrichit l’analyse en dévoilant des relations hiérarchiques. Une approche hybride maximise la valeur analytique tout en respectant les contraintes opérationnelles.
+
+
+## Projection des clusters hiérarchiques sur l'ACP
+```{r}
+# Ajouter les clusters hiérarchiques au dataset
+bike_data$Cluster_HC <- as.factor(cluster_hc) 
+
+# Générer le graphique PCA avec coloration des clusters
+p_hc <-fviz_pca_ind(pca_result, 
+             habillage = bike_data$Cluster_HC,
+             palette = "jco",
+             addEllipses = T,
+             ellipse.type = "norm",
+             repel = T, 
+             title = "Projection des clusters hiérarchiques sur ACP")+ 
+             theme_minimal()
+p_hc
+```
+**Analyse du graphique** :
+```
+Ce graphique montre comment les observations se répartissent dans l’espace formé par les deux CP (Dim1 et Dim2). Chaque point représente une observation, et sa couleur ou son symbole(pas evident ici) indique le cluster auquel elle appartient
+```
+
+```
+\
+1.  Axe PC1 (XX% de variance) :
+\
+Cluster 1 (en bleu) : Positionné à gauche → Associé aux valeurs négatives de PC1.
+
+Cluster 2 (en jaune) : Positionné au centre → Valeurs intermédiaires de PC1.
+
+Cluster 3 (en gris) : Positionné à droite → Associé aux valeurs positives de PC1.
+\
+2.  Axe PC2 (YY% de variance) :
+\
+Cluster 1&3 : En haut → Valeurs positives de PC2.
+
+Cluster 2 : En bas → Valeurs négatives de PC2.
+```
+\newpage
+**Analyse approfondie**
+```{r}
+# Extraire les contributions des variables
+var_contrib <- get_pca_var(pca_result)$contrib
+knitr::kable(var_contrib[, 1:2], caption = "Contribution des variables aux composantes principales")
+```
+**Analyse:**
+**Dimension 1 (39% + 37% = 76% des explications température)**  
+**Dimension 2 (72.5% expliquée par le vent)**  
+```
+1.  Cluster 1 (en bleu) : Regroupe surtout les points vers le haut/gauche (valeurs plus faibles sur Dim1, plus fortes sur Dim2). Il pourrait s’agir d’observations où la température est bas et le vent plus marqué.
+2.  Cluster 2 (en jaune) : Principalement situé en bas du graphique (Dim2 faible), suggérant  un vent moins fort ou d’autres conditions météo particulières.
+3.  Cluster 3 (en gris) : Plutôt concentré vers la droite (Dim1 plus élevée), indiquant possiblement des températures plus hautes et une humidité moindre(sec).
+```
+\
+**Séparation des groupes**
+\
+```
+On voit que ces trois groupes ne sont pas totalement isolés : certains points se chevauchent, ce qui signifie qu’ils partagent des caractéristiques communes. Malgré tout, on observe une tendance à la séparation, ce qui montre que la classification hiérarchique parvient à segmenter les observations en groupes distincts selon les variables météo analysées.
+Pour mieux comprendre ces groupes, on peut comparer la moyenne ou la médiane de chaque variable d’origine (température, humidité, vent, etc.) dans chacun des clusters.
+```
+\
+###Conclusion
+\
+En projetant les clusters hiérarchiques sur les deux premières CP (qui expliquent plus de 80 % de la variance), on obtient un aperçu clair de la façon dont les données se structurent selon la température, l’humidité ou le vent.
+\
+Les trois groupes repérés semblent correspondre à des profils météo différents. Pour aller plus loin, on peut examiner davantage de composantes (Dim3, Dim4) ou comparer ces résultats à d’autres méthodes de classification (ex : K-means) afin de confirmer la robustesse de ces clusters.
+\
+**Optimisation opérationnelle :**
+
+1.  Adapter l’approvisionnement des vélos selon le gradient PC1 (ex: + de vélos en zone PC1+).
+
+2.  Renforcer les ancrages dans les zones PC2- (vents forts).
+
+\newpage
